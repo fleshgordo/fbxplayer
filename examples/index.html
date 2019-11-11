@@ -1,322 +1,149 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
+		<title>three.js webgl - FBX loader</title>
 		<meta charset="utf-8">
-		<title>three.js examples</title>
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="shortcut icon" href="../files/favicon.ico" />
-		<link rel="stylesheet" type="text/css" href="../files/main.css">
-		<style>
-			#panel #content .link {
-				display: block;
-			}
-		</style>
+		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
+
 	<body>
-
-		<div id="panel">
-
-			<div id="header">
-				<h1><a href="http://threejs.org">three.js</a></h1>
-
-				<div id="sections">
-					<a href="../docs/index.html#manual/introduction/Creating-a-scene">docs</a>
-					<span class="selected">examples</span>
-				</div>
-
-				<div id="expandButton"></div>
-			</div>
-
-			<div id="panelScrim"></div>
-
-			<div id="contentWrapper">
-
-				<div id="inputWrapper">
-					<input placeholder="" type="text" id="filter" autocorrect="off" autocapitalize="off" spellcheck="false" />
-					<div id="exitSearchButton"></div>
-				</div>
-
-				<div id="content"></div>
-			</div>
-
+		<div id="info">
+			<a href="http://threejs.org" target="_blank" rel="noopener">three.js</a> - FBXLoader<br />
+			Character and animation from <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Mixamo</a>
 		</div>
 
-		<iframe id="viewer" name="viewer" allowfullscreen allowvr onmousewheel=""></iframe>
+		<script type="module">
 
-		<a id="button" target="_blank"><img src="../files/ic_code_black_24dp.svg"></a>
+			import * as THREE from '../build/three.module.js';
 
-		<script src="files.js"></script>
+			import Stats from './jsm/libs/stats.module.js';
 
-		<script>
+			import { OrbitControls } from './jsm/controls/OrbitControls.js';
+			import { FBXLoader } from './jsm/loaders/FBXLoader.js';
 
-		function extractQuery() {
+			var container, stats, controls;
+			var camera, scene, renderer, light;
 
-			var p = window.location.search.indexOf( '?q=' );
+			var clock = new THREE.Clock();
 
-			if ( p !== - 1 ) {
+			var mixer;
 
-				return window.location.search.substr( 3 );
+			init();
+			animate();
 
-			}
+			function init() {
 
-			return '';
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
 
-		}
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
+				camera.position.set( 100, 200, 300 );
 
-		var panel = document.getElementById( 'panel' );
-		var content = document.getElementById( 'content' );
-		var viewer = document.getElementById( 'viewer' );
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0xa0a0a0 );
+				scene.fog = new THREE.Fog( 0xa0a0a0, 200, 1000 );
 
-		var filterInput = document.getElementById( 'filter' );
-		var exitSearchButton = document.getElementById( 'exitSearchButton' );
+				light = new THREE.HemisphereLight( 0xffffff, 0x444444 );
+				light.position.set( 0, 200, 0 );
+				scene.add( light );
 
-		var expandButton = document.getElementById( 'expandButton' );
-		expandButton.addEventListener( 'click', function ( event ) {
+				light = new THREE.DirectionalLight( 0xffffff );
+				light.position.set( 0, 200, 100 );
+				light.castShadow = true;
+				light.shadow.camera.top = 180;
+				light.shadow.camera.bottom = - 100;
+				light.shadow.camera.left = - 120;
+				light.shadow.camera.right = 120;
+				scene.add( light );
 
-			event.preventDefault();
-			panel.classList.toggle( 'open' );
+				// scene.add( new CameraHelper( light.shadow.camera ) );
 
-		} );
+				// ground
+				var mesh = new THREE.Mesh( new THREE.PlaneBufferGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } ) );
+				mesh.rotation.x = - Math.PI / 2;
+				mesh.receiveShadow = true;
+				scene.add( mesh );
 
-		var panelScrim = document.getElementById( 'panelScrim' );
-		panelScrim.onclick = function ( event ) {
+				var grid = new THREE.GridHelper( 2000, 20, 0x000000, 0x000000 );
+				grid.material.opacity = 0.2;
+				grid.material.transparent = true;
+				scene.add( grid );
 
-			event.preventDefault();
-			panel.classList.toggle( 'open' );
+				// model
+				var loader = new FBXLoader();
+				loader.load( 'models/fbx/atletismo.fbx', function ( object ) {
 
-		};
+					mixer = new THREE.AnimationMixer( object );
+					
+					let skeletonHelper = new THREE.SkeletonHelper( object );
+					skeletonHelper.material.linewidth = 13;
+					scene.add( skeletonHelper );
 
-		// iOS iframe auto-resize workaround
+					
+					var action = mixer.clipAction( object.animations[ 0 ] );
+					action.play();
 
-		if ( /(iPad|iPhone|iPod)/g.test( navigator.userAgent ) ) {
+					object.traverse( function ( child ) {
 
-			viewer.style.width = getComputedStyle( viewer ).width;
-			viewer.style.height = getComputedStyle( viewer ).height;
-			viewer.setAttribute( 'scrolling', 'no' );
+						if ( child.isMesh ) {
 
-		}
+							child.castShadow = true;
+							child.receiveShadow = true;
 
-		var container = document.createElement( 'div' );
-		content.appendChild( container );
+						}
 
-		var viewSrcButton = document.getElementById( 'button' );
-		viewSrcButton.style.display = 'none';
+					} );
 
-		var links = {};
-		var selected = null;
+					scene.add( object );
 
-		function createLink( file ) {
+				}, function onProgress(on) {},
+				function onError(err) {
+					console.log(err)
+				} );
 
-			var link = document.createElement( 'a' );
-			link.className = 'link';
-			link.href = file + '.html';
-			link.textContent = getName( file );
-			link.setAttribute( 'target', 'viewer' );
-			link.addEventListener( 'click', function ( event ) {
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.shadowMap.enabled = true;
+				container.appendChild( renderer.domElement );
 
-				if ( event.button !== 0 || event.ctrlKey || event.altKey || event.metaKey ) return;
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 100, 0 );
+				controls.update();
 
-				selectFile( file );
+				window.addEventListener( 'resize', onWindowResize, false );
 
-			} );
-
-			return link;
-
-		}
-
-		for ( var key in files ) {
-
-			var section = files[ key ];
-
-			var header = document.createElement( 'h2' );
-			header.textContent = key;
-			header.setAttribute( 'data-category', key );
-			container.appendChild( header );
-
-			for ( var i = 0; i < section.length; i ++ ) {
-
-				var file = section[ i ];
-
-				var link = createLink( file );
-				container.appendChild( link );
-
-				links[ file ] = link;
-
-			}
-
-		}
-
-		function loadFile( file ) {
-
-			selectFile( file );
-			viewer.src = file + '.html';
-
-		}
-
-		function selectFile( file ) {
-
-			if ( selected !== null ) links[ selected ].classList.remove( 'selected' );
-
-			links[ file ].classList.add( 'selected' );
-
-			window.location.hash = file;
-			viewer.focus();
-
-			panel.classList.remove( 'open' );
-
-			selected = file;
-
-			// Reveal "View source" button and set attributes to this example
-			viewSrcButton.style.display = '';
-			viewSrcButton.href = 'https://github.com/mrdoob/three.js/blob/master/examples/' + selected + '.html';
-			viewSrcButton.title = 'View source code for ' + getName( selected ) + ' on GitHub';
-
-		}
-
-		if ( window.location.hash !== '' && links[ window.location.hash.substring( 1 ) ] ) {
-
-			loadFile( window.location.hash.substring( 1 ) );
-
-		}
-
-		// filter
-		filterInput.onfocus = function ( event ) {
-
-			panel.classList.add( 'searchFocused' );
-
-		};
-
-		filterInput.onblur = function ( event ) {
-
-			if ( filterInput.value === '' ) {
-
-				panel.classList.remove( 'searchFocused' );
+				// stats
+				stats = new Stats();
+				container.appendChild( stats.dom );
 
 			}
 
-		};
+			function onWindowResize() {
 
-		exitSearchButton.onclick = function ( event ) {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
 
-			filterInput.value = '';
-			updateFilter();
-			panel.classList.remove( 'searchFocused' );
-
-		};
-
-		filterInput.addEventListener( 'input', function () {
-
-			updateFilter();
-
-		} );
-
-		function updateFilter() {
-
-			var v = filterInput.value;
-
-			if ( v !== '' ) {
-
-				window.history.replaceState( {}, '', '?q=' + v + window.location.hash );
-
-			} else {
-
-				window.history.replaceState( {}, '', window.location.pathname + window.location.hash );
+				renderer.setSize( window.innerWidth, window.innerHeight );
 
 			}
 
-			var exp = new RegExp( v, 'gi' );
+			//
 
-			for ( var key in files ) {
+			function animate() {
 
-				var section = files[ key ];
+				requestAnimationFrame( animate );
 
-				for ( var i = 0; i < section.length; i ++ ) {
+				var delta = clock.getDelta();
 
-					filterExample( section[ i ], exp );
+				if ( mixer ) mixer.update( delta );
 
-				}
+				renderer.render( scene, camera );
 
-			}
-
-			layoutList();
-
-		}
-
-		function filterExample( file, exp ) {
-
-			var link = links[ file ];
-			var name = getName( file );
-			var res = file.match( exp );
-			var text;
-
-			if ( res && res.length > 0 ) {
-
-				link.classList.remove( 'hidden' );
-
-				for ( var i = 0; i < res.length; i ++ ) {
-
-					text = name.replace( res[ i ], '<b>' + res[ i ] + '</b>' );
-
-				}
-
-				link.innerHTML = text;
-
-			} else {
-
-				link.classList.add( 'hidden' );
-				link.innerHTML = name;
+				stats.update();
 
 			}
-
-		}
-
-		function getName( file ) {
-
-			var name = file.split( '_' );
-			name.shift();
-			return name.join( ' / ' );
-
-		}
-
-		function layoutList() {
-
-			for ( var key in files ) {
-
-				var collapsed = true;
-
-				var section = files[ key ];
-
-				for ( var i = 0; i < section.length; i ++ ) {
-
-					var file = section[ i ];
-
-					if ( links[ file ].classList.contains( 'hidden' ) === false ) {
-
-						collapsed = false;
-						break;
-
-					}
-
-				}
-
-				var element = document.querySelector( 'h2[data-category="' + key + '"]' );
-
-				if ( collapsed ) {
-
-					element.classList.add( 'hidden' );
-
-				} else {
-
-					element.classList.remove( 'hidden' );
-
-				}
-
-			}
-
-		}
-
-		filterInput.value = extractQuery();
-		updateFilter();
 
 		</script>
 
